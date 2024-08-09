@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #222;
+            font-family: Arial, sans-serif;
+        }
+
+        .game-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            background-color: #f0f0f0;
+            border: 2px solid #333;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        }
+
+        canvas {
+            border: 2px solid #444;
+            background-color: #fafafa;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .controls button {
+            width: 60px;
+            height: 60px;
+            font-size: 20px;
+            background-color: #333;
+            color: #fff;
+            border: 2px solid #444;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .controls button:hover {
+            background-color: #555;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: #ff3333;
+            display: none;
+            text-align: center;
+        }
+
+        .game-over.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div id="gameOverMessage" class="game-over">Game Over!<br>Press Enter to Restart and btw made by vaibhav</div>
+    </div>
+    <div class="controls">
+        <button id="up">↑</button>
+        <div>
+            <button id="left">←</button>
+            <button id="down">↓</button>
+            <button id="right">→</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const scale = 20;
+        const rows = canvas.height / scale;
+        const columns = canvas.width / scale;
+
+        let snake;
+        let fruit;
+        let gameInterval;
+
+        class Snake {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.body = [{ x: 10 * scale, y: 10 * scale }];
+                this.xSpeed = scale;
+                this.ySpeed = 0;
+                this.total = 0;
+                this.isGameOver = false;
+            }
+
+            draw() {
+                ctx.fillStyle = "green";
+                ctx.strokeStyle = "darkgreen";
+                this.body.forEach(segment => {
+                    ctx.fillRect(segment.x, segment.y, scale, scale);
+                    ctx.strokeRect(segment.x, segment.y, scale, scale);
+                });
+            }
+
+            update() {
+                if (this.isGameOver) return;
+
+                for (let i = this.body.length - 1; i > 0; i--) {
+                    this.body[i] = { ...this.body[i - 1] };
+                }
+
+                this.body[0].x += this.xSpeed;
+                this.body[0].y += this.ySpeed;
+
+                if (this.body[0].x >= canvas.width) this.body[0].x = 0;
+                if (this.body[0].y >= canvas.height) this.body[0].y = 0;
+                if (this.body[0].x < 0) this.body[0].x = canvas.width - scale;
+                if (this.body[0].y < 0) this.body[0].y = canvas.height - scale;
+
+                this.checkCollision();
+            }
+
+            changeDirection(direction) {
+                if (this.isGameOver) return;
+
+                switch (direction) {
+                    case 'Up':
+                        if (this.ySpeed === 0) {
+                            this.xSpeed = 0;
+                            this.ySpeed = -scale;
+                        }
+                        break;
+                    case 'Down':
+                        if (this.ySpeed === 0) {
+                            this.xSpeed = 0;
+                            this.ySpeed = scale;
+                        }
+                        break;
+                    case 'Left':
+                        if (this.xSpeed === 0) {
+                            this.xSpeed = -scale;
+                            this.ySpeed = 0;
+                        }
+                        break;
+                    case 'Right':
+                        if (this.xSpeed === 0) {
+                            this.xSpeed = scale;
+                            this.ySpeed = 0;
+                        }
+                        break;
+                }
+            }
+
+            eat(fruit) {
+                if (this.body[0].x === fruit.x && this.body[0].y === fruit.y) {
+                    this.total++;
+                    this.body.push({});
+                    return true;
+                }
+                return false;
+            }
+
+            checkCollision() {
+                for (let i = 1; i < this.body.length; i++) {
+                    if (this.body[0].x === this.body[i].x && this.body[0].y === this.body[i].y) {
+                        this.gameOver();
+                    }
+                }
+            }
+
+            gameOver() {
+                this.isGameOver = true;
+                document.getElementById('gameOverMessage').classList.add('visible');
+                clearInterval(gameInterval);
+            }
+        }
+
+        class Fruit {
+            constructor() {
+                this.pickLocation();
+            }
+
+            pickLocation() {
+                this.x = Math.floor(Math.random() * columns) * scale;
+                this.y = Math.floor(Math.random() * rows) * scale;
+            }
+
+            draw() {
+                ctx.fillStyle = "red";
+                ctx.fillRect(this.x, this.y, scale, scale);
+            }
+        }
+
+        function setup() {
+            snake = new Snake();
+            fruit = new Fruit();
+
+            gameInterval = setInterval(() => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                fruit.draw();
+                snake.update();
+                snake.draw();
+
+                if (snake.eat(fruit)) {
+                    fruit.pickLocation();
+                }
+            }, 100);
+        }
+
+        function restartGame() {
+            document.getElementById('gameOverMessage').classList.remove('visible');
+            snake.reset();
+            setup();
+        }
+
+        window.addEventListener('keydown', evt => {
+            const key = evt.key.replace('Arrow', '').toLowerCase();
+
+            switch (key) {
+                case 'w': snake.changeDirection('Up'); break;
+                case 's': snake.changeDirection('Down'); break;
+                case 'a': snake.changeDirection('Left'); break;
+                case 'd': snake.changeDirection('Right'); break;
+                case 'enter':
+                    if (snake.isGameOver) {
+                        restartGame();
+                    }
+                    break;
+                default:
+                    snake.changeDirection(key.charAt(0).toUpperCase() + key.slice(1));
+            }
+        });
+
+        document.getElementById('up').addEventListener('click', () => snake.changeDirection('Up'));
+        document.getElementById('down').addEventListener('click', () => snake.changeDirection('Down'));
+        document.getElementById('left').addEventListener('click', () => snake.changeDirection('Left'));
+        document.getElementById('right').addEventListener('click', () => snake.changeDirection('Right'));
+
+        setup();
+    </script>
+</body>
+</html>
