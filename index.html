@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snake Game</title>
+    <title>Snake, Flappy Bird & Pong Games</title>
     <style>
         body, html {
             height: 100%;
@@ -12,8 +12,9 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background-color: #222;
             font-family: Arial, sans-serif;
+            overflow: hidden;
+            touch-action: none;
         }
 
         .game-container {
@@ -21,37 +22,14 @@
             justify-content: center;
             align-items: center;
             position: relative;
-            background-color: #f0f0f0;
+            background-color: var(--bg-color, #f0f0f0);
             border: 2px solid #333;
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
         }
 
         canvas {
             border: 2px solid #444;
-            background-color: #fafafa;
-        }
-
-        .controls {
-            margin-top: 20px;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .controls button {
-            width: 60px;
-            height: 60px;
-            font-size: 20px;
-            background-color: #333;
-            color: #fff;
-            border: 2px solid #444;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        .controls button:hover {
-            background-color: #555;
+            background-color: var(--canvas-bg-color, #fafafa);
         }
 
         .game-over {
@@ -64,44 +42,77 @@
             color: #ff3333;
             display: none;
             text-align: center;
+            cursor: pointer;
         }
 
         .game-over.visible {
             display: block;
         }
+
+        .high-score {
+            margin-top: 10px;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .theme-toggle, .game-toggle {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #333;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .theme-toggle:hover, .game-toggle:hover {
+            background-color: #555;
+        }
     </style>
 </head>
 <body>
     <div class="game-container">
-        <canvas id="gameCanvas" width="400" height="400"></canvas>
-        <div id="gameOverMessage" class="game-over">Game Over!<br>Press Enter to Restart and btw made by vaibhav</div>
+        <!-- Snake Game Canvas -->
+        <canvas id="snakeCanvas" width="400" height="400"></canvas>
+        <div id="snakeGameOver" class="game-over">Game Over!<br>Click or Tap to Restart</div>
+
+        <!-- Flappy Bird Game Canvas -->
+        <canvas id="flappyCanvas" width="400" height="600" style="display:none;"></canvas>
+        <div id="flappyGameOver" class="game-over">Game Over!<br>Click or Tap to Restart</div>
+
+        <!-- Pong Game Canvas -->
+        <canvas id="pongCanvas" width="400" height="400" style="display:none;"></canvas>
+        <div id="pongGameOver" class="game-over">Game Over!<br>Click or Tap to Restart</div>
     </div>
-    <div class="controls">
-        <button id="up">↑</button>
-        <div>
-            <button id="left">←</button>
-            <button id="down">↓</button>
-            <button id="right">→</button>
-        </div>
-    </div>
+
+    <div class="high-score">High Score: <span id="highScore">0</span></div>
+    <button class="theme-toggle" id="themeToggle">Toggle Theme</button>
+    <button class="game-toggle" id="gameToggle">Switch to Flappy Bird</button>
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-
+        // General Variables
+        const snakeCanvas = document.getElementById('snakeCanvas');
+        const flappyCanvas = document.getElementById('flappyCanvas');
+        const pongCanvas = document.getElementById('pongCanvas');
+        const ctxSnake = snakeCanvas.getContext('2d');
+        const ctxFlappy = flappyCanvas.getContext('2d');
+        const ctxPong = pongCanvas.getContext('2d');
         const scale = 20;
-        const rows = canvas.height / scale;
-        const columns = canvas.width / scale;
+        const rows = snakeCanvas.height / scale;
+        const columns = snakeCanvas.width / scale;
+        let snake, fruit, gameInterval, highScore = localStorage.getItem('highScore') || 0;
+        document.getElementById('highScore').innerText = highScore;
+        let currentGame = 'snake'; // Track the current game (snake/flappy/pong)
 
-        let snake;
-        let fruit;
-        let gameInterval;
+        let touchStartX, touchStartY, touchEndX, touchEndY;
 
+        // Snake Game Class Definitions
         class Snake {
             constructor() {
                 this.reset();
             }
-
             reset() {
                 this.body = [{ x: 10 * scale, y: 10 * scale }];
                 this.xSpeed = scale;
@@ -109,37 +120,56 @@
                 this.total = 0;
                 this.isGameOver = false;
             }
-
             draw() {
-                ctx.fillStyle = "green";
-                ctx.strokeStyle = "darkgreen";
-                this.body.forEach(segment => {
-                    ctx.fillRect(segment.x, segment.y, scale, scale);
-                    ctx.strokeRect(segment.x, segment.y, scale, scale);
+                this.body.forEach((segment, index) => {
+                    if (index === 0) {
+                        ctxSnake.fillStyle = "darkgreen";
+                        ctxSnake.fillRect(segment.x + 2, segment.y + 2, scale - 4, scale - 4);
+
+                        // Adding eyes and face details
+                        ctxSnake.fillStyle = "white";
+                        let eyeSize = 4;
+                        let mouthSize = 6;
+                        if (this.xSpeed > 0) {
+                            ctxSnake.fillRect(segment.x + scale - eyeSize - 2, segment.y + 4, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + scale - eyeSize - 2, segment.y + scale - eyeSize - 4, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + scale - mouthSize - 2, segment.y + scale / 2 - 2, mouthSize, 2);
+                        } else if (this.xSpeed < 0) {
+                            ctxSnake.fillRect(segment.x + 2, segment.y + 4, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + 2, segment.y + scale - eyeSize - 4, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + 2, segment.y + scale / 2 - 2, mouthSize, 2);
+                        } else if (this.ySpeed > 0) {
+                            ctxSnake.fillRect(segment.x + 4, segment.y + scale - eyeSize - 2, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + scale - eyeSize - 4, segment.y + scale - eyeSize - 2, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + scale / 2 - 3, segment.y + scale - mouthSize - 2, 2, mouthSize);
+                        } else if (this.ySpeed < 0) {
+                            ctxSnake.fillRect(segment.x + 4, segment.y + 2, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + scale - eyeSize - 4, segment.y + 2, eyeSize, eyeSize);
+                            ctxSnake.fillRect(segment.x + scale / 2 - 3, segment.y + 2, 2, mouthSize);
+                        }
+                    } else {
+                        ctxSnake.fillStyle = "green";
+                        ctxSnake.fillRect(segment.x + 2, segment.y + 2, scale - 4, scale - 4);
+                    }
+                    ctxSnake.strokeStyle = "darkgreen";
+                    ctxSnake.strokeRect(segment.x, segment.y, scale, scale);
                 });
             }
-
             update() {
                 if (this.isGameOver) return;
-
                 for (let i = this.body.length - 1; i > 0; i--) {
                     this.body[i] = { ...this.body[i - 1] };
                 }
-
                 this.body[0].x += this.xSpeed;
                 this.body[0].y += this.ySpeed;
-
-                if (this.body[0].x >= canvas.width) this.body[0].x = 0;
-                if (this.body[0].y >= canvas.height) this.body[0].y = 0;
-                if (this.body[0].x < 0) this.body[0].x = canvas.width - scale;
-                if (this.body[0].y < 0) this.body[0].y = canvas.height - scale;
-
+                if (this.body[0].x >= snakeCanvas.width) this.body[0].x = 0;
+                if (this.body[0].y >= snakeCanvas.height) this.body[0].y = 0;
+                if (this.body[0].x < 0) this.body[0].x = snakeCanvas.width - scale;
+                if (this.body[0].y < 0) this.body[0].y = snakeCanvas.height - scale;
                 this.checkCollision();
             }
-
             changeDirection(direction) {
                 if (this.isGameOver) return;
-
                 switch (direction) {
                     case 'Up':
                         if (this.ySpeed === 0) {
@@ -167,7 +197,6 @@
                         break;
                 }
             }
-
             eat(fruit) {
                 if (this.body[0].x === fruit.x && this.body[0].y === fruit.y) {
                     this.total++;
@@ -176,19 +205,13 @@
                 }
                 return false;
             }
-
             checkCollision() {
                 for (let i = 1; i < this.body.length; i++) {
                     if (this.body[0].x === this.body[i].x && this.body[0].y === this.body[i].y) {
-                        this.gameOver();
+                        this.isGameOver = true;
+                        document.getElementById('snakeGameOver').classList.add('visible');
                     }
                 }
-            }
-
-            gameOver() {
-                this.isGameOver = true;
-                document.getElementById('gameOverMessage').classList.add('visible');
-                clearInterval(gameInterval);
             }
         }
 
@@ -196,64 +219,205 @@
             constructor() {
                 this.pickLocation();
             }
-
             pickLocation() {
                 this.x = Math.floor(Math.random() * columns) * scale;
                 this.y = Math.floor(Math.random() * rows) * scale;
             }
-
             draw() {
-                ctx.fillStyle = "red";
-                ctx.fillRect(this.x, this.y, scale, scale);
+                ctxSnake.fillStyle = "#ff0000";
+                ctxSnake.fillRect(this.x + 4, this.y + 4, scale - 8, scale - 8);
             }
         }
 
-        function setup() {
+        function startSnakeGame() {
             snake = new Snake();
             fruit = new Fruit();
-
             gameInterval = setInterval(() => {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctxSnake.clearRect(0, 0, snakeCanvas.width, snakeCanvas.height);
                 fruit.draw();
                 snake.update();
                 snake.draw();
-
-                if (snake.eat(fruit)) {
-                    fruit.pickLocation();
-                }
+                if (snake.eat(fruit)) fruit.pickLocation();
             }, 100);
         }
 
-        function restartGame() {
-            document.getElementById('gameOverMessage').classList.remove('visible');
+        function resetSnakeGame() {
             snake.reset();
-            setup();
+            fruit.pickLocation();
+            clearInterval(gameInterval);
+            startSnakeGame();
         }
 
-        window.addEventListener('keydown', evt => {
-            const key = evt.key.replace('Arrow', '').toLowerCase();
+        // Flappy Bird Variables
+        let birdY, birdVelocity, pipes, pipeWidth, pipeGap, pipeSpeed, flappyInterval, flappyGameOver = false;
 
-            switch (key) {
-                case 'w': snake.changeDirection('Up'); break;
-                case 's': snake.changeDirection('Down'); break;
-                case 'a': snake.changeDirection('Left'); break;
-                case 'd': snake.changeDirection('Right'); break;
-                case 'enter':
-                    if (snake.isGameOver) {
-                        restartGame();
-                    }
-                    break;
-                default:
-                    snake.changeDirection(key.charAt(0).toUpperCase() + key.slice(1));
+        function startFlappyGame() {
+            birdY = flappyCanvas.height / 2;
+            birdVelocity = 0;
+            pipes = [];
+            pipeWidth = 60;
+            pipeGap = 150;
+            pipeSpeed = 2;
+            flappyGameOver = false;
+            flappyInterval = setInterval(updateFlappyBird, 20);
+        }
+
+        function resetFlappyGame() {
+            clearInterval(flappyInterval);
+            startFlappyGame();
+        }
+
+        function updateFlappyBird() {
+            ctxFlappy.clearRect(0, 0, flappyCanvas.width, flappyCanvas.height);
+            birdVelocity += 0.5; // gravity
+            birdY += birdVelocity;
+            ctxFlappy.fillStyle = "#ffcc00";
+            ctxFlappy.fillRect(80, birdY, 30, 30); // Draw bird
+            if (pipes.length === 0 || pipes[pipes.length - 1].x < flappyCanvas.width - 300) {
+                pipes.push({
+                    x: flappyCanvas.width,
+                    y: Math.random() * (flappyCanvas.height - pipeGap - 100) + 50
+                });
+            }
+            pipes.forEach((pipe, index) => {
+                pipe.x -= pipeSpeed;
+                ctxFlappy.fillStyle = "#00cc00";
+                ctxFlappy.fillRect(pipe.x, 0, pipeWidth, pipe.y); // upper pipe
+                ctxFlappy.fillRect(pipe.x, pipe.y + pipeGap, pipeWidth, flappyCanvas.height - pipe.y - pipeGap); // lower pipe
+                if (
+                    (80 + 30 > pipe.x && 80 < pipe.x + pipeWidth &&
+                        (birdY < pipe.y || birdY + 30 > pipe.y + pipeGap)) ||
+                    birdY + 30 > flappyCanvas.height || birdY < 0
+                ) {
+                    flappyGameOver = true;
+                    clearInterval(flappyInterval);
+                    document.getElementById('flappyGameOver').classList.add('visible');
+                }
+                if (pipe.x + pipeWidth < 0) {
+                    pipes.splice(index, 1);
+                }
+            });
+        }
+
+        // Pong Variables
+        let leftPaddleY, rightPaddleY, ballX, ballY, ballXSpeed, ballYSpeed, pongGameInterval;
+
+        function startPongGame() {
+            leftPaddleY = pongCanvas.height / 2 - 40;
+            rightPaddleY = pongCanvas.height / 2 - 40;
+            ballX = pongCanvas.width / 2;
+            ballY = pongCanvas.height / 2;
+            ballXSpeed = 2;
+            ballYSpeed = 2;
+            pongGameInterval = setInterval(updatePongGame, 20);
+        }
+
+        function resetPongGame() {
+            clearInterval(pongGameInterval);
+            startPongGame();
+        }
+
+        function updatePongGame() {
+            ctxPong.clearRect(0, 0, pongCanvas.width, pongCanvas.height);
+            ballX += ballXSpeed;
+            ballY += ballYSpeed;
+            if (ballY <= 0 || ballY >= pongCanvas.height) ballYSpeed = -ballYSpeed;
+            if (ballX <= 0 || ballX >= pongCanvas.width) {
+                clearInterval(pongGameInterval);
+                document.getElementById('pongGameOver').classList.add('visible');
+                return;
+            }
+            if (ballX <= 10 && ballY > leftPaddleY && ballY < leftPaddleY + 80) ballXSpeed = -ballXSpeed;
+            if (ballX >= pongCanvas.width - 20 && ballY > rightPaddleY && ballY < rightPaddleY + 80) ballXSpeed = -ballXSpeed;
+            rightPaddleY = ballY - 40; // simple AI for right paddle
+            ctxPong.fillStyle = "#fff";
+            ctxPong.fillRect(5, leftPaddleY, 10, 80); // left paddle
+            ctxPong.fillRect(pongCanvas.width - 15, rightPaddleY, 10, 80); // right paddle
+            ctxPong.fillRect(ballX - 5, ballY - 5, 10, 10); // ball
+        }
+
+        // Control Events for Snake and Pong
+        document.addEventListener('keydown', (e) => {
+            if (currentGame === 'snake') {
+                switch (e.key) {
+                    case 'ArrowUp': snake.changeDirection('Up'); break;
+                    case 'ArrowDown': snake.changeDirection('Down'); break;
+                    case 'ArrowLeft': snake.changeDirection('Left'); break;
+                    case 'ArrowRight': snake.changeDirection('Right'); break;
+                }
+            } else if (currentGame === 'pong') {
+                switch (e.key) {
+                    case 'ArrowUp':
+                        leftPaddleY = Math.max(leftPaddleY - 20, 0);
+                        break;
+                    case 'ArrowDown':
+                        leftPaddleY = Math.min(leftPaddleY + 20, pongCanvas.height - 80);
+                        break;
+                }
             }
         });
 
-        document.getElementById('up').addEventListener('click', () => snake.changeDirection('Up'));
-        document.getElementById('down').addEventListener('click', () => snake.changeDirection('Down'));
-        document.getElementById('left').addEventListener('click', () => snake.changeDirection('Left'));
-        document.getElementById('right').addEventListener('click', () => snake.changeDirection('Right'));
+        // Switch between Games
+        document.getElementById('gameToggle').addEventListener('click', () => {
+            if (currentGame === 'snake') {
+                clearInterval(gameInterval);
+                document.getElementById('snakeGameOver').classList.remove('visible');
+                snakeCanvas.style.display = 'none';
+                flappyCanvas.style.display = 'block';
+                document.getElementById('gameToggle').innerText = 'Switch to Pong';
+                currentGame = 'flappy';
+                startFlappyGame();
+            } else if (currentGame === 'flappy') {
+                clearInterval(flappyInterval);
+                document.getElementById('flappyGameOver').classList.remove('visible');
+                flappyCanvas.style.display = 'none';
+                pongCanvas.style.display = 'block';
+                document.getElementById('gameToggle').innerText = 'Switch to Snake';
+                currentGame = 'pong';
+                startPongGame();
+            } else if (currentGame === 'pong') {
+                clearInterval(pongGameInterval);
+                document.getElementById('pongGameOver').classList.remove('visible');
+                pongCanvas.style.display = 'none';
+                snakeCanvas.style.display = 'block';
+                document.getElementById('gameToggle').innerText = 'Switch to Flappy Bird';
+                currentGame = 'snake';
+                startSnakeGame();
+            }
+        });
 
-        setup();
+        // Reset Game on Game Over Click
+        document.getElementById('snakeGameOver').addEventListener('click', () => {
+            resetSnakeGame();
+            document.getElementById('snakeGameOver').classList.remove('visible');
+        });
+
+        document.getElementById('flappyGameOver').addEventListener('click', () => {
+            resetFlappyGame();
+            document.getElementById('flappyGameOver').classList.remove('visible');
+        });
+
+        document.getElementById('pongGameOver').addEventListener('click', () => {
+            resetPongGame();
+            document.getElementById('pongGameOver').classList.remove('visible');
+        });
+
+        // Theme toggle button
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            if (document.body.style.getPropertyValue('--bg-color') === '#222') {
+                document.body.style.setProperty('--bg-color', '#f0f0f0');
+                document.body.style.setProperty('--canvas-bg-color', '#fafafa');
+                document.getElementById('themeToggle').innerText = 'Toggle Theme';
+            } else {
+                document.body.style.setProperty('--bg-color', '#222');
+                document.body.style.setProperty('--canvas-bg-color', '#111');
+                document.getElementById('themeToggle').innerText = 'Toggle Light Theme';
+            }
+        });
+
+        // Initial Game Start (Snake)
+        startSnakeGame();
+
     </script>
 </body>
 </html>
